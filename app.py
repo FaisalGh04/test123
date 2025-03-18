@@ -1,22 +1,15 @@
 from flask import Flask, render_template, request, jsonify, Response, g
 from langchain_ollama import OllamaLLM
 from langchain_core.prompts import ChatPromptTemplate
-import pyttsx3
 import time
 import os
 
-# Initialize the TTS engine
-try:
-    tts_engine = pyttsx3.init()
-except Exception as e:
-    print(f"Error initializing TTS engine: {e}")
-    tts_engine = None
-
-app = Flask(__name__, template_folder="C:/Users/DELL/.ollama/GPW/templates")
+app = Flask(__name__, template_folder="templates")  # Use a relative path for templates
 print(f"Template folder path: {app.template_folder}")
+
 # Initialize the model and prompt
 template = """
-Answer the question below.S
+Answer the question below.
 
 Here is the conversation history: {context}
 
@@ -84,11 +77,6 @@ def chat():
         result = chain.invoke({"context": g.context, "question": user_input})
         g.context += f"\nUser: {user_input}\nAI: {result}"
 
-        # Speak the response if TTS is available
-        if tts_engine:
-            tts_engine.say(result)
-            tts_engine.runAndWait()
-
         # Return the text response in chunks
         def generate():
             for word in result.split():
@@ -101,5 +89,5 @@ def chat():
         return jsonify({"response": "An error occurred while processing your request."}), 500
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))  # Use Heroku's port or default to 5001
+    port = int(os.environ.get("PORT", 5000))  # Use Heroku's port or default to 5000
     app.run(debug=True, host="0.0.0.0", port=port)
