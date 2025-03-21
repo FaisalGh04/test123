@@ -17,11 +17,11 @@ venv/
 *.log
 
 # Static files (if not tracked)
-static/
-templates/
+#static/
+#templates/
 
 # macOS files
-.DS_Store
+.DS_StoreS
 
 # Windows files
 Thumbs.db

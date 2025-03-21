@@ -1,6 +1,5 @@
 from flask import Flask, render_template, request, jsonify, Response, g
-from langchain_ollama import OllamaLLM
-from langchain_core.prompts import ChatPromptTemplate
+from openai import OpenAI
 import time
 import os
 import logging
@@ -12,7 +11,10 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, template_folder="templates")
 logger.debug(f"Template folder path: {app.template_folder}")
 
-# Initialize the model and prompt
+# Initialize the OpenAI client
+client = OpenAI(api_key=os.getenv("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"))  # Make sure to set your OpenAI API key in the environment variables
+
+# Template for the prompt
 template = """
 Answer the question below.
 
@@ -23,17 +25,6 @@ Question: {question}
 Answer:
 """
 
-try:
-    logger.debug("Initializing OllamaLLM model...")
-    model = OllamaLLM(model="llama3:latest")  # Ensure the model name is correct
-    prompt = ChatPromptTemplate.from_template(template)
-    chain = prompt | model
-    logger.debug("Model and chain initialized successfully.")
-except Exception as e:
-    logger.error(f"Error initializing model or chain: {e}")
-    model = None
-    chain = None
-
 # Store conversation context in Flask's g object
 @app.before_request
 def initialize_context():
@@ -42,15 +33,6 @@ def initialize_context():
     if not hasattr(g, 'MAX_CONTEXT_LENGTH'):
         g.MAX_CONTEXT_LENGTH = 500  # Reduce context size
     logger.debug(f"Context initialized: {g.context}")
-
-# Warm up the model
-if chain:
-    try:
-        logger.debug("Warming up the model...")
-        chain.invoke({"context": "", "question": "Hello"})
-        logger.debug("Model warmed up successfully.")
-    except Exception as e:
-        logger.error(f"Error warming up the model: {e}")
 
 # Routes
 @app.route("/")
@@ -75,10 +57,6 @@ def contact():
 
 @app.route("/chat", methods=["GET"])
 def chat_stream():
-    if not chain:
-        logger.error("Chain not initialized. Model may not be available.")
-        return jsonify({"response": "Error: Model not initialized"}), 500
-
     user_input = request.args.get("message", "").strip()
     logger.debug(f"Received user input: {user_input}")
 
@@ -93,16 +71,22 @@ def chat_stream():
         logger.debug(f"Context trimmed to: {g.context}")
 
     try:
-        logger.debug("Invoking the chain...")
-        result = chain.invoke({"context": g.context, "question": user_input})
-        g.context += f"\nUser: {user_input}\nAI: {result}"
-        logger.debug(f"Generated response: {result}")
+        logger.debug("Sending request to GPT-4 API...")
+        response = client.chat.completions.create(
+            model="gpt-4",  # Use "gpt-4" or "gpt-4-1106-preview" depending on your access
+            messages=[
+                {"role": "system", "content": template.format(context=g.context, question=user_input)},
+                {"role": "user", "content": user_input}
+            ],
+            stream=True  # Enable streaming
+        )
 
         # Stream the response back to the client
         def generate():
-            for word in result.split():
-                yield f"data: {word}\n\n"
-                time.sleep(0.1)  # Simulate a delay between words
+            for chunk in response:
+                if chunk.choices[0].delta.content:
+                    yield f"data: {chunk.choices[0].delta.content}\n\n"
+                    time.sleep(0.1)  # Simulate a delay between words
             yield "data: [END]\n\n"  # Signal the end of the response
 
         return Response(generate(), mimetype="text/event-stream")
